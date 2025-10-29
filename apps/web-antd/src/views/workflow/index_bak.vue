@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import WorkflowDesigner from '#/packages/workflow-designer/StandaloneWorkflowDesigner.vue'
 import type { WorkflowInfo, WorkflowComponent } from '#/packages/workflow-designer/types/index.d'
-import { NMessageProvider } from 'naive-ui'
 
 /**
  * 备份文件，用于对比新旧版本
@@ -64,11 +63,8 @@ function handleRun(payload: { workflow: WorkflowInfo }) {
 
 <template>
   <div class="h-full">
-    <n-message-provider>
-      <WorkflowDesigner :workflow="workflow" :wf-components="wfComponents" :component-id-map="componentIdMap" @save="handleSave" @run="handleRun" />
-    </n-message-provider>
+    <WorkflowDesigner :workflow="workflow" :wf-components="wfComponents" :component-id-map="componentIdMap" @save="handleSave" @run="handleRun" />
   </div>
-  
 </template>
 
 
