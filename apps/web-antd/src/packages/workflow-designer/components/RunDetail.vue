@@ -20,6 +20,7 @@ const submitting = ref<boolean>(wfStore.submitting)
 const startNode = ref<any>(null)
 const wfRuntimeUuid = ref<string>('')
 const runtimeNodes = reactive<any[]>([])
+let lastRuntimeNodeUuid: string | null = null
 const runtimeErrorMsg = ref<string>('')
 const userInputs = ref<any[]>([])
 const errorMsg = ref<string>('')
@@ -112,8 +113,15 @@ async function run() {
                 ;(runtimeNode as any).workflowComponentId = wfNodeMeta.workflowComponentId
               }
             }
+            ;(runtimeNode as any).startAt = Date.now()
             wfStore.appendRuntimeNode(wfRuntimeUuid.value, runtimeNode)
             runtimeNodes.push(runtimeNode)
+            // 标记上一个节点完成时间
+            if (lastRuntimeNodeUuid) {
+              const prev = runtimeNodes.find((n: any) => n.uuid === lastRuntimeNodeUuid)
+              if (prev && !prev.endAt) prev.endAt = Date.now()
+            }
+            lastRuntimeNodeUuid = runtimeNode.uuid
           } else if (eventName.includes('[NODE_CHUNK_')) {
             console.log('NODE_CHUNK_', eventName, chunk)
             const nodeUuid = eventName.replace('[NODE_CHUNK_', '').replace(']', '')
@@ -156,6 +164,11 @@ async function run() {
           runtimeErrorMsg.value = ''
           message.success('执行成功')
           emit('runDone')
+          // 收尾：最后一个节点的结束时间
+          if (lastRuntimeNodeUuid) {
+            const last = runtimeNodes.find((n: any) => n.uuid === lastRuntimeNodeUuid)
+            if (last && !last.endAt) last.endAt = Date.now()
+          }
         })
       },
       errorCallback: (error) => {

@@ -3,6 +3,7 @@ import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import CommonNodeHeader from '../../components/CommonNodeHeader.vue'
 import SvgIcon from '../../components/SvgIcon.vue'
+import RuntimeBadge from '../../components/RuntimeBadge.vue'
 
 defineProps<NodeProps>()
 </script>
@@ -18,6 +19,7 @@ defineProps<NodeProps>()
         {{ data.nodeConfig?.model_name }}
       </div>
     </div>
+    <RuntimeBadge :wf-node="data" />
   </div>
 </template>
 

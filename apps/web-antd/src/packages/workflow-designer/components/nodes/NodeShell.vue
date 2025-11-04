@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Handle, Position } from '@vue-flow/core'
 import CommonNodeHeader from '../../components/CommonNodeHeader.vue'
+import RuntimeBadge from '../../components/RuntimeBadge.vue'
 import { computed } from 'vue'
 
 interface Props {
@@ -63,6 +64,7 @@ const lines = computed(() => {
     <CommonNodeHeader :wf-node="data" />
     <div v-for="(line, idx) in lines" :key="idx" class="content_line text-left px-3">{{ line }}</div>
     <div v-if="!lines.length && extra" class="content_line text-left px-3">{{ extra }}</div>
+    <RuntimeBadge :wf-node="data" />
   </div>
   
 </template>

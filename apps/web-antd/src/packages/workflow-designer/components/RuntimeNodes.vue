@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { computed } from 'vue'
-import { Image } from 'ant-design-vue'
+import { computed, ref } from 'vue'
+import { Drawer, Image } from 'ant-design-vue'
 import SvgIcon from './SvgIcon.vue'
 import { getIconByComponentName, getIconClassByComponentName } from '../utils/workflow-util'
 
@@ -45,6 +45,66 @@ function getRealFileUrl(fileUrl: string) {
   if (!fileUrl.includes('http') && !fileUrl.includes('/api')) return `/api${fileUrl}`
   return fileUrl
 }
+
+// 运行详情组件注册机制：支持在 properties 目录下新增 <Name>NodeRuntime.vue
+const runtimeDetailModules = import.meta.glob('../properties/*NodeRuntime.vue', {
+  eager: true,
+  import: 'default',
+}) as Record<string, any>
+
+function toRuntimeKey(path: string) {
+  const file = path.substring(path.lastIndexOf('/') + 1)
+  return file.replace(/NodeRuntime\.vue$/, '').toLowerCase()
+}
+
+const runtimeDetailMap = Object.fromEntries(
+  Object.entries(runtimeDetailModules).map(([p, mod]) => [toRuntimeKey(p), mod]),
+)
+
+// 默认详情组件：仅展示输入和输出
+const DefaultRuntimeDetail = {
+  props: ['node'],
+  template: `
+    <div class="space-y-3">
+      <div class="text-base font-semibold">输入</div>
+      <div v-if="!node?.input || Object.keys(node.input).length===0" class="text-neutral-400">无输入</div>
+      <div v-else v-for="(content, name) in node.input" :key="'input_'+name" class="flex">
+        <div class="min-w-24 pr-2">{{ name }}</div>
+        <div class="whitespace-pre-wrap break-words">{{ content?.value ?? '' }}</div>
+      </div>
+      <div class="text-base font-semibold mt-2">输出</div>
+      <div v-if="!node?.output || Object.keys(node.output).length===0" class="text-neutral-400">无输出</div>
+      <div v-else v-for="(content, name) in node.output" :key="'output_'+name" class="flex">
+        <div class="min-w-24 pr-2">{{ name }}</div>
+        <div class="whitespace-pre-wrap break-words">{{ content?.value ?? '' }}</div>
+      </div>
+    </div>
+  `,
+}
+
+function resolveRuntimeDetailComponent(node: any) {
+  const name = node?.wfComponent?.name?.toLowerCase() || ''
+  return runtimeDetailMap[name] || DefaultRuntimeDetail
+}
+
+// 详情抽屉
+const detailVisible = ref(false)
+const detailNode = ref<any>(null)
+function openDetail(node: any) {
+  detailNode.value = node
+  detailVisible.value = true
+}
+
+// 运行态辅助：开始/结束时间与状态
+function getStatus(node: any) {
+  if (node?.endAt) return 'done'
+  return 'running'
+}
+function getDurationMs(node: any) {
+  if (!node?.startAt) return 0
+  const end = node?.endAt ? node.endAt : Date.now()
+  return Math.max(0, end - node.startAt)
+}
 </script>
 
 <template>
@@ -52,19 +112,32 @@ function getRealFileUrl(fileUrl: string) {
     <div v-if="errorMsg" class="py-2 text-red-500">错误：{{ errorMsg }}</div>
     <div v-else-if="nodes.length === 0" class="text-center py-2 text-neutral-400">无内容</div>
     <div v-show="prologue" class="p-2">{{ prologue }}</div>
-    <div v-for="node in nodes" :key="node.uuid" class="flex flex-col space-y-2 border border-gray-200 p-2 m-2 rounded-md" :title="node.nodeTitle" :name="node.uuid">
+    <div
+      v-for="node in nodes"
+      :key="node.uuid"
+      class="flex flex-col space-y-2 border border-gray-200 p-2 m-2 rounded-md"
+      :title="node.nodeTitle"
+      :name="node.uuid"
+    >
       <!-- 调试信息 -->
       <!-- <div class="text-xs text-gray-500">
         Debug: wfComponent={{ node.wfComponent }}, workflowComponentId={{ node.workflowComponentId }}
       </div> -->
-      <div class="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded-md">
+      <div class="flex items-center justify-between bg-gray-100 px-2 py-1 rounded-md">
+        <div class="flex items-center space-x-1">
         <SvgIcon 
           v-if="node.wfComponent || node.workflowComponentId" 
           class="text-base" 
           :class="node.wfComponent ? getIconClassByComponentName(node.wfComponent.name) : getIconClassByComponentName(getComponentNameByWorkflowComponentId(node.workflowComponentId))" 
           :icon="node.wfComponent ? getIconByComponentName(node.wfComponent.name) : getIconByComponentName(getComponentNameByWorkflowComponentId(node.workflowComponentId))" 
         />
-        <div class="text-base">{{ node.nodeTitle || '找不到节点标题' }}</div>
+          <div class="text-base">{{ node.nodeTitle || '找不到节点标题' }}</div>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span v-if="getStatus(node) === 'running'" class="text-xs text-blue-500">正在运行</span>
+          <span v-else class="text-xs text-green-600">运行完成 · {{ (getDurationMs(node) / 1000).toFixed(1) }}s</span>
+          <a class="text-xs" @click.stop="openDetail(node)">查看详情</a>
+        </div>
       </div>
       <div class="flex flex-col space-y-2">
         <div class="text-base border-b border-gray-200 py-1">输入</div>
@@ -91,6 +164,9 @@ function getRealFileUrl(fileUrl: string) {
         </div>
       </div>
     </div>
+    <Drawer :open="detailVisible" title="节点运行详情" placement="right" :width="520" @close="() => (detailVisible = false)">
+      <component :is="resolveRuntimeDetailComponent(detailNode)" :node="detailNode" />
+    </Drawer>
   </div>
 </template>
 

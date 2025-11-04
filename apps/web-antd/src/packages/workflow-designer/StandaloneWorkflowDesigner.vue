@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, reactive, ref, computed, provide, watch, markRaw } from 'vue'
-import { Button, message } from 'ant-design-vue'
+import { Button, message, Drawer } from 'ant-design-vue'
 import type { Edge, Node, NodeChange, EdgeChange, Connection, NodeMouseEvent } from '@vue-flow/core'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -9,6 +9,8 @@ import { createNewEdge, createNewNode, emptyWorkflowInfo, getIconByComponentName
 import type { WorkflowInfo, WorkflowComponent, WorkflowNode } from './types/index.d'
 import RightPanel from './panels/RightPanel.vue'
 import NodeShell from './components/nodes/NodeShell.vue'
+import RuntimeNodes from './components/RuntimeNodes.vue'
+import { workflowRun } from '#/api/workflow'
 
 interface Props {
   workflow: WorkflowInfo
@@ -141,8 +143,8 @@ function renderGraph() {
         target: wfEdge.targetNodeUuid, 
         sourceHandle: wfEdge.sourceHandle, 
         type: 'special', 
-        animated: true, 
-        data: wfEdge 
+        animated: false, 
+        data: { ...wfEdge } 
       })
       console.log(`添加边: ${wfEdge.uuid} (${wfEdge.sourceNodeUuid} -> ${wfEdge.targetNodeUuid})`)
     } else {
@@ -262,6 +264,128 @@ onNodeDragStop(({ node }: any) => {
 })
 
 function onRun() { emit('run', { workflow: props.workflow }) }
+
+// —— 运行时渲染（在编辑页内直接展示） ——
+const showCurrentExecution = ref<boolean>(false)
+const runtimeNodes = reactive<any[]>([])
+const detailVisible = ref(false)
+const detailNode = ref<any>(null)
+
+function openRuntimeDetail(node: any) {
+  detailNode.value = node?.__runtime || node
+  detailVisible.value = true
+}
+provide('wfOpenRuntimeDetail', (node: any) => openRuntimeDetail(node))
+
+function markIncomingEdgesRunning(targetNodeUuid: string | undefined) {
+  uiWorkflow.edges.forEach((e: any) => {
+    const isIncoming = targetNodeUuid && e.target === targetNodeUuid
+    e.data = { ...(e.data || {}), running: !!isIncoming }
+  })
+}
+
+// 运行详情组件注册：properties/<Name>NodeRuntime.vue
+const runtimeDetailModules = import.meta.glob('./properties/*NodeRuntime.vue', { eager: true, import: 'default' }) as Record<string, any>
+function toRuntimeKey(path: string) {
+  const file = path.substring(path.lastIndexOf('/') + 1)
+  return file.replace(/NodeRuntime\.vue$/, '').toLowerCase()
+}
+const runtimeDetailMap = Object.fromEntries(Object.entries(runtimeDetailModules).map(([p, mod]) => [toRuntimeKey(p), mod]))
+const DefaultRuntimeDetail = {
+  props: ['node'],
+  template: `
+    <div class="space-y-3">
+      <div class="text-base font-semibold">输入</div>
+      <div v-if="!node?.input || Object.keys(node.input).length===0" class="text-neutral-400">无输入</div>
+      <div v-else v-for="(content, name) in node.input" :key="'input_'+name" class="flex">
+        <div class="min-w-24 pr-2">{{ name }}</div>
+        <div class="whitespace-pre-wrap break-words">{{ content?.value ?? '' }}</div>
+      </div>
+      <div class="text-base font-semibold mt-2">输出</div>
+      <div v-if="!node?.output || Object.keys(node.output).length===0" class="text-neutral-400">无输出</div>
+      <div v-else v-for="(content, name) in node.output" :key="'output_'+name" class="flex">
+        <div class="min-w-24 pr-2">{{ name }}</div>
+        <div class="whitespace-pre-wrap break-words">{{ content?.value ?? '' }}</div>
+      </div>
+    </div>
+  `,
+}
+function resolveRuntimeDetailComponent(node: any) {
+  const name = node?.wfComponent?.name?.toLowerCase?.() || ''
+  return runtimeDetailMap[name] || DefaultRuntimeDetail
+}
+
+async function runInsideDesigner() {
+  // 构建开始节点用户输入（此处仅透传已有配置，实际环境可扩展为弹窗输入）
+  const start = props.workflow.nodes.find((n: any) => n.wfComponent?.name === 'Start') as any
+  const inputs = Array.isArray(start?.inputConfig?.user_inputs)
+    ? start.inputConfig.user_inputs.map((i: any) => ({ uuid: i.uuid, name: i.name, content: { title: i.title, value: i.default ?? null, type: i.type }, required: i.required }))
+    : []
+
+  const nodeUuidToRuntimeNodeUuid = new Map<string, string>()
+  runtimeNodes.splice(0, runtimeNodes.length)
+
+  try {
+    await workflowRun({
+      options: { uuid: props.workflow.uuid, inputs },
+      startCallback: (wfRuntimeJson) => {
+        showCurrentExecution.value = true
+        // 初始化：清除所有边的 running 状态
+        markIncomingEdgesRunning(undefined)
+      },
+      messageReceived: (chunk, event) => {
+        const evt = event || ''
+        try {
+          if (evt.includes('[NODE_RUN_')) {
+            const nodeUuid = evt.replace('[NODE_RUN_', '').replace(']', '')
+            const runtimeNode = JSON.parse(chunk)
+            nodeUuidToRuntimeNodeUuid.set(nodeUuid, runtimeNode.uuid)
+            // 附加到 workflow 节点上，供节点组件读取
+            const wfNode = props.workflow.nodes.find((n: any) => n.uuid === nodeUuid) as any
+            if (wfNode) {
+              wfNode.__runtime = { ...runtimeNode, startAt: Date.now(), input: {}, output: {} }
+              markIncomingEdgesRunning(wfNode.uuid)
+            }
+            runtimeNodes.push(runtimeNode)
+          } else if (evt.includes('[NODE_CHUNK_')) {
+            const nodeUuid = evt.replace('[NODE_CHUNK_', '').replace(']', '')
+            const wfNode = props.workflow.nodes.find((n: any) => n.uuid === nodeUuid) as any
+            if (wfNode?.__runtime) wfNode.__runtime.chunks = (wfNode.__runtime.chunks || '') + chunk
+          } else if (evt.includes('[NODE_INPUT_')) {
+            const nodeUuid = evt.replace('[NODE_INPUT_', '').replace(']', '')
+            const wfNode = props.workflow.nodes.find((n: any) => n.uuid === nodeUuid) as any
+            if (wfNode?.__runtime) {
+              const payload = JSON.parse(chunk)
+              wfNode.__runtime.input = { ...(wfNode.__runtime.input || {}), [payload.name]: payload.content }
+            }
+          } else if (evt.includes('[NODE_OUTPUT_')) {
+            const nodeUuid = evt.replace('[NODE_OUTPUT_', '').replace(']', '')
+            const wfNode = props.workflow.nodes.find((n: any) => n.uuid === nodeUuid) as any
+            if (wfNode?.__runtime) {
+              const payload = JSON.parse(chunk)
+              wfNode.__runtime.output = { ...(wfNode.__runtime.output || {}), [payload.name]: payload.content }
+            }
+          }
+        } catch {}
+      },
+      doneCallback: () => {
+        // 标记最后一个节点完成
+        const last = props.workflow.nodes.findLast?.((n: any) => n.__runtime && !n.__runtime.endAt) || props.workflow.nodes.slice().reverse().find((n: any) => n.__runtime)
+        if (last?.__runtime) last.__runtime.endAt = Date.now()
+        // 清除边 running 状态
+        markIncomingEdgesRunning(undefined)
+        message.success('执行完成')
+      },
+      errorCallback: (err) => {
+        message.error(`运行失败：${err}`)
+        markIncomingEdgesRunning(undefined)
+      },
+    })
+  } catch (e: any) {
+    message.error(e?.message || '运行出错')
+    markIncomingEdgesRunning(undefined)
+  }
+}
 
 async function onSave() {
   if (props.saving) return
@@ -387,9 +511,12 @@ provide('wfOnDeleteNode', (uuid: string) => onDeleteNode(uuid))
       </VueFlow>
       <RightPanel :workflow="props.workflow" :ui-workflow="uiWorkflow" :hide-property-panel="hidePropertyPanel" :wf-node="selectedWfNode" />
       <div class="canvas-toolbar">
-        <Button :disabled="props.saving" class="toolbar-btn toolbar-btn-default" @click="onRun">运 行</Button>
+        <Button :disabled="props.saving" class="toolbar-btn toolbar-btn-default" @click="runInsideDesigner">运 行</Button>
         <Button :disabled="props.saving" :loading="props.saving" type="primary" class="toolbar-btn" @click="onSave">保 存</Button>
       </div>
+      <Drawer :open="detailVisible" title="节点运行详情" placement="right" :width="520" @close="() => (detailVisible = false)">
+        <component :is="resolveRuntimeDetailComponent(detailNode)" :node="(detailNode && (detailNode.__runtime || detailNode))" />
+      </Drawer>
     </div>
   </div>
 </template>
