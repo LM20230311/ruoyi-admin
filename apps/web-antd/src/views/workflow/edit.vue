@@ -177,6 +177,7 @@ onMounted(async () => {
         :wf-components="wfComponents" 
         :component-id-map="componentIdMap"
         :saving="saving"
+        :workflow-run="workflowApi.workflowRun"
         @save="handleSave" 
         @run="handleRun" 
       />

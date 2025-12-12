@@ -1,4 +1,5 @@
 import { adapters } from './adapters'
+import { workflowRun } from './runtime'
 
 export const workflowApi = {
   workflowAdd<T = any>(data: { title: string; remark: string; isPublic: boolean }) {
@@ -84,6 +85,9 @@ export const workflowApi = {
   }) {
     return adapters.httpPost<T>(`/workflow/runtime/resume/${params.runtimeUuid}`, { ...params })
   },
+
+  // 运行接口（透出给前端运行或设计器内运行）
+  workflowRun,
 }
 
 export default workflowApi

@@ -9,19 +9,21 @@ import { createNewEdge, createNewNode, emptyWorkflowInfo, getIconByComponentName
 import type { WorkflowInfo, WorkflowComponent, WorkflowNode } from './types/index.d'
 import RightPanel from './panels/RightPanel.vue'
 import NodeShell from './components/nodes/NodeShell.vue'
-import { workflowRun } from '#/api/workflow'
+// 运行接口由宿主组件注入，便于移植复用
 
 interface Props {
   workflow: WorkflowInfo
   wfComponents: WorkflowComponent[]
   componentIdMap: Record<number, string>
   saving?: boolean
+  workflowRun: (params: any) => Promise<any>
 }
 const props = withDefaults(defineProps<Props>(), {
   workflow: () => emptyWorkflowInfo(),
   wfComponents: () => [],
   componentIdMap: () => ({}),
   saving: false,
+  workflowRun: async () => { throw new Error('workflowRun 未注入') },
 })
 
 // 组件库收起状态
@@ -347,14 +349,14 @@ async function runInsideDesigner() {
   runtimeNodes.splice(0, runtimeNodes.length)
 
   try {
-    await workflowRun({
+    await props.workflowRun({
       options: { uuid: props.workflow.uuid, inputs },
-      startCallback: (_wfRuntimeJson) => {
+      startCallback: (_wfRuntimeJson: any) => {
         showCurrentExecution.value = true
         // 初始化：清除所有边的 running 状态
         markIncomingEdgesRunning(undefined)
       },
-      messageReceived: (chunk, event) => {
+      messageReceived: (chunk: any, event: any) => {
         const evt = event || ''
         try {
           if (evt.includes('[NODE_RUN_')) {
@@ -413,7 +415,7 @@ async function runInsideDesigner() {
         markIncomingEdgesRunning(undefined)
         message.success('执行完成')
       },
-      errorCallback: (err) => {
+      errorCallback: (err: any) => {
         message.error(`运行失败：${err}`)
         markAllRunningNodesDone(Date.now())
         markIncomingEdgesRunning(undefined)
