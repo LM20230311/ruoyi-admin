@@ -4,7 +4,8 @@ import { Button, Input, InputNumber, Switch, Tabs, Upload, message } from 'ant-d
 import type { UploadFile } from 'ant-design-vue'
 import RuntimeNodes from './RuntimeNodes.vue'
 import SvgIcon from './SvgIcon.vue'
-import { workflowRun, workflowRuntimeResume, getUploadAction, workflowApi } from '#/api/workflow'
+import { workflowRun, workflowRuntimeResume, getUploadAction } from '#/api/workflow'
+import { createComponentNameMap } from '../utils/component-map'
 import { useWfStore } from '#/packages/workflow-designer/store'
 
 interface Props { workflow: any }
@@ -34,8 +35,8 @@ const uploadedFileUuids = ref<string[]>([])
 const humanFeedback = ref<boolean>(false)
 const humanFeedbackTip = ref<string>('')
 const humanFeedbackContent = ref<string>('')
-// 组件ID到组件名称的映射
-const componentIdToNameMap = ref<Record<string, string>>({})
+// 组件ID到组件名称的映射（与 RuntimeNodes 统一）
+const { componentIdToNameMap, getNameById, refresh: refreshComponentMap } = createComponentNameMap()
 let controller = new AbortController()
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -227,33 +228,9 @@ function handleClick() {
   tabObj.value.tab = showCurrentExecution.value ? `${tabObj.value.defaultTab} ↓` : `${tabObj.value.defaultTab} ↑`
 }
 
-// 获取组件列表并构建映射
-async function fetchWorkflowComponents() {
-  try {
-    const response = await workflowApi.workflowComponents()
-    // 处理可能的响应格式：可能是直接数组，也可能是包装对象
-    const components = Array.isArray(response) ? response : (response?.data || [])
-    const map: Record<string, string> = {}
-    if (Array.isArray(components)) {
-      components.forEach((component: any) => {
-        // 使用 id 作为 key，name 作为 value
-        const id = String(component.id)
-        map[id] = component.name
-      })
-    }
-    componentIdToNameMap.value = map
-    console.log('组件ID映射:', map)
-  } catch (error) {
-    console.error('获取组件列表失败:', error)
-    // 如果获取失败，使用空映射，后续会使用备用方案
-    componentIdToNameMap.value = {}
-  }
-}
-
 // 根据 workflowComponentId 获取组件名称
 function getComponentNameByWorkflowComponentId(workflowComponentId: number | string): string {
-  const id = String(workflowComponentId)
-  return componentIdToNameMap.value[id] || 'Unknown'
+  return getNameById(workflowComponentId)
 }
 
 function findStartNodeFromWorkflow() {
@@ -296,7 +273,7 @@ function rebuildUserInputs() {
 
 // 初始化：获取组件列表并重建用户输入
 async function init() {
-  await fetchWorkflowComponents()
+  await refreshComponentMap()
   rebuildUserInputs()
 }
 

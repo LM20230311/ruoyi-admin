@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { message, Modal, Spin, Empty } from 'ant-design-vue';
 import { Page } from '@vben/common-ui';
@@ -89,7 +89,7 @@ async function loadWorkflow() {
 }
 
 // 保存工作流
-async function handleSave(updated: WorkflowInfo) {
+async function handleSave(updated: WorkflowInfo, options: { stay?: boolean } = {}) {
   if (saving.value) return;
   
   saving.value = true;
@@ -115,8 +115,10 @@ async function handleSave(updated: WorkflowInfo) {
 
     message.success('保存成功');
     
-    // 保存成功后返回列表页
-    router.push({ name: 'Workflow' });
+    // 保存成功后返回列表页（运行时可选择停留在当前页）
+    if (!options.stay) {
+      router.push({ name: 'Workflow' });
+    }
   } catch (error: any) {
     message.error(error.message || '保存失败');
   } finally {
@@ -137,27 +139,19 @@ function handleCancel() {
   });
 }
 
-// 运行工作流
+const designerRef = ref<InstanceType<typeof WorkflowDesigner> | null>(null);
+
+// 运行工作流：保存后直接在当前设计器内执行，不再跳转
 async function handleRun() {
-  Modal.confirm({
-    title: '提示',
-    content: '运行前需要先保存工作流，是否继续？',
-    okText: '保存并运行',
-    cancelText: '取消',
-    onOk: async () => {
-      try {
-        // 先保存工作流
-        await handleSave(workflow.value);
-        // 保存成功后跳转到运行页面
-        router.push({
-          name: 'WorkflowRun',
-          params: { uuid: workflow.value.uuid },
-        });
-      } catch (error) {
-        message.error('保存失败，无法运行工作流');
-      }
-    },
-  });
+  if (saving.value) return;
+
+  try {
+    await handleSave(workflow.value, { stay: true });
+    await nextTick();
+    await designerRef.value?.runInsideDesigner?.();
+  } catch (error: any) {
+    message.error(error?.message || '运行失败');
+  }
 }
 
 onMounted(async () => {
@@ -178,6 +172,7 @@ onMounted(async () => {
     </div>
     <div v-else-if="workflow.uuid" class="workflow-edit-page">
       <WorkflowDesigner 
+        ref="designerRef"
         :workflow="workflow" 
         :wf-components="wfComponents" 
         :component-id-map="componentIdMap"

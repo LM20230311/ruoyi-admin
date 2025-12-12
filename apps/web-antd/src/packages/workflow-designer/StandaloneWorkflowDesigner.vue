@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, reactive, ref, computed, provide, watch, markRaw } from 'vue'
-import { Button, message, Drawer } from 'ant-design-vue'
+import { Button, message } from 'ant-design-vue'
 import type { Edge, Node, NodeChange, EdgeChange, Connection, NodeMouseEvent } from '@vue-flow/core'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -9,7 +9,6 @@ import { createNewEdge, createNewNode, emptyWorkflowInfo, getIconByComponentName
 import type { WorkflowInfo, WorkflowComponent, WorkflowNode } from './types/index.d'
 import RightPanel from './panels/RightPanel.vue'
 import NodeShell from './components/nodes/NodeShell.vue'
-import RuntimeNodes from './components/RuntimeNodes.vue'
 import { workflowRun } from '#/api/workflow'
 
 interface Props {
@@ -271,23 +270,15 @@ function onRun() { emit('run', { workflow: props.workflow }) }
 // —— 运行时渲染（在编辑页内直接展示） ——
 const showCurrentExecution = ref<boolean>(false)
 const runtimeNodes = reactive<any[]>([])
-const detailVisible = ref(false)
-const detailNode = ref<any>(null)
-
-function openRuntimeDetail(node: any) {
-  detailNode.value = node?.__runtime || node
-  detailVisible.value = true
+const runtimeDetailUuid = ref<string | null>(null)
+// 运行详情改为节点内折叠展示：点击切换展开，保持只展开一个
+function toggleRuntimeDetail(node: any) {
+  const uuid = node?.uuid
+  runtimeDetailUuid.value = runtimeDetailUuid.value === uuid ? null : uuid
 }
-provide('wfOpenRuntimeDetail', (node: any) => openRuntimeDetail(node))
-
-function markIncomingEdgesRunning(targetNodeUuid: string | undefined) {
-  uiWorkflow.edges.forEach((e: any) => {
-    const isIncoming = targetNodeUuid && e.target === targetNodeUuid
-    e.data = { ...(e.data || {}), running: !!isIncoming }
-  })
-}
-
-// 运行详情组件注册：properties/<Name>NodeRuntime.vue
+provide('wfOpenRuntimeDetail', (node: any) => toggleRuntimeDetail(node))
+provide('wfRuntimeDetailUuid', runtimeDetailUuid)
+// 运行详情组件注册：properties/<Name>NodeRuntime.vue，并下发解析函数，供节点内展示
 const runtimeDetailModules = import.meta.glob('./properties/*NodeRuntime.vue', { eager: true, import: 'default' }) as Record<string, any>
 function toRuntimeKey(path: string) {
   const file = path.substring(path.lastIndexOf('/') + 1)
@@ -317,6 +308,23 @@ function resolveRuntimeDetailComponent(node: any) {
   const name = node?.wfComponent?.name?.toLowerCase?.() || ''
   return runtimeDetailMap[name] || DefaultRuntimeDetail
 }
+provide('wfResolveRuntimeDetail', resolveRuntimeDetailComponent)
+
+function markIncomingEdgesRunning(targetNodeUuid: string | undefined) {
+  uiWorkflow.edges.forEach((e: any) => {
+    const isIncoming = targetNodeUuid && e.target === targetNodeUuid
+    e.data = { ...(e.data || {}), running: !!isIncoming }
+  })
+}
+
+function markAllRunningNodesDone(timestamp: number) {
+  (props.workflow.nodes as any[]).forEach((n) => {
+    if (n?.__runtime && !n.__runtime.endAt) n.__runtime.endAt = timestamp
+  })
+  runtimeNodes.forEach((n: any) => {
+    if (n && !n.endAt) n.endAt = timestamp
+  })
+}
 
 async function runInsideDesigner() {
   // 构建开始节点用户输入（此处仅透传已有配置，实际环境可扩展为弹窗输入）
@@ -331,7 +339,7 @@ async function runInsideDesigner() {
   try {
     await workflowRun({
       options: { uuid: props.workflow.uuid, inputs },
-      startCallback: (wfRuntimeJson) => {
+      startCallback: (_wfRuntimeJson) => {
         showCurrentExecution.value = true
         // 初始化：清除所有边的 running 状态
         markIncomingEdgesRunning(undefined)
@@ -342,12 +350,20 @@ async function runInsideDesigner() {
           if (evt.includes('[NODE_RUN_')) {
             const nodeUuid = evt.replace('[NODE_RUN_', '').replace(']', '')
             const runtimeNode = JSON.parse(chunk)
+            ;(runtimeNode as any).nodeUuid = nodeUuid
             nodeUuidToRuntimeNodeUuid.set(nodeUuid, runtimeNode.uuid)
             // 附加到 workflow 节点上，供节点组件读取
             const wfNode = props.workflow.nodes.find((n: any) => n.uuid === nodeUuid) as any
             if (wfNode) {
               wfNode.__runtime = { ...runtimeNode, startAt: Date.now(), input: {}, output: {} }
               markIncomingEdgesRunning(wfNode.uuid)
+            }
+            // 标记上一个已运行节点的结束时间，避免状态一直“运行中”
+            const prev = runtimeNodes[runtimeNodes.length - 1]
+            if (prev && !prev.endAt) {
+              prev.endAt = Date.now()
+              const prevWf = props.workflow.nodes.find((n: any) => n.uuid === prev.nodeUuid) as any
+              if (prevWf?.__runtime && !prevWf.__runtime.endAt) prevWf.__runtime.endAt = prev.endAt
             }
             runtimeNodes.push(runtimeNode)
           } else if (evt.includes('[NODE_CHUNK_')) {
@@ -373,14 +389,22 @@ async function runInsideDesigner() {
       },
       doneCallback: () => {
         // 标记最后一个节点完成
-        const last = props.workflow.nodes.findLast?.((n: any) => n.__runtime && !n.__runtime.endAt) || props.workflow.nodes.slice().reverse().find((n: any) => n.__runtime)
-        if (last?.__runtime) last.__runtime.endAt = Date.now()
+        const wfNodes = props.workflow.nodes as any[]
+        const last = wfNodes.findLast?.((n: any) => n.__runtime && !n.__runtime.endAt) || wfNodes.slice().reverse().find((n: any) => n.__runtime)
+        const nowTs = Date.now()
+        if (last?.__runtime) last.__runtime.endAt = nowTs
+        // 同步 runtimeNodes 列表的最后一条，确保“正在运行”文案收敛
+        const lastRuntime = runtimeNodes[runtimeNodes.length - 1]
+        if (lastRuntime && !lastRuntime.endAt) lastRuntime.endAt = nowTs
+        // 兜底：将所有仍未结束的运行节点标记为完成
+        markAllRunningNodesDone(nowTs)
         // 清除边 running 状态
         markIncomingEdgesRunning(undefined)
         message.success('执行完成')
       },
       errorCallback: (err) => {
         message.error(`运行失败：${err}`)
+        markAllRunningNodesDone(Date.now())
         markIncomingEdgesRunning(undefined)
       },
     })
@@ -465,6 +489,9 @@ function onDeleteNode(nodeUuid: string) {
 
 // 向节点组件注入删除回调，便于在节点内部触发删除
 provide('wfOnDeleteNode', (uuid: string) => onDeleteNode(uuid))
+
+// 暴露内部运行方法，便于外部在保存后触发运行
+defineExpose({ runInsideDesigner })
 </script>
 
 <template>
@@ -514,12 +541,9 @@ provide('wfOnDeleteNode', (uuid: string) => onDeleteNode(uuid))
       </VueFlow>
       <RightPanel :workflow="props.workflow" :ui-workflow="uiWorkflow" :hide-property-panel="hidePropertyPanel" :wf-node="selectedWfNode" />
       <div class="canvas-toolbar">
-        <Button :disabled="props.saving" class="toolbar-btn toolbar-btn-default" @click="runInsideDesigner">运 行</Button>
+        <Button :disabled="props.saving" class="toolbar-btn toolbar-btn-default" @click="onRun">运 行</Button>
         <Button :disabled="props.saving" :loading="props.saving" type="primary" class="toolbar-btn" @click="onSave">保 存</Button>
       </div>
-      <Drawer :open="detailVisible" title="节点运行详情" placement="right" :width="520" @close="() => (detailVisible = false)">
-        <component :is="resolveRuntimeDetailComponent(detailNode)" :node="(detailNode && (detailNode.__runtime || detailNode))" />
-      </Drawer>
     </div>
   </div>
 </template>

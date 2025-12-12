@@ -1,8 +1,9 @@
 <script lang="ts" setup>
-import { computed, ref } from 'vue'
-import { Drawer, Image } from 'ant-design-vue'
+import { computed, ref, inject, watch, onMounted } from 'vue'
+import { Image } from 'ant-design-vue'
 import SvgIcon from './SvgIcon.vue'
 import { getIconByComponentName, getIconClassByComponentName } from '../utils/workflow-util'
+import { createComponentNameMap } from '../utils/component-map'
 
 interface Props {
   nodes: any[]
@@ -17,28 +18,12 @@ const prologue = computed(() => {
   return (startNode?.nodeConfig || {}).prologue || ''
 })
 
-// 根据 workflowComponentId 获取组件名称
+// 组件ID -> 名称映射（复用公共逻辑，支持移植）
+const { getNameById, refresh: refreshComponentMap } = createComponentNameMap()
+
+// 根据 workflowComponentId 获取组件名称（优先映射，退回固定表）
 function getComponentNameByWorkflowComponentId(workflowComponentId: number | string): string {
-  const id = Number(workflowComponentId)
-  switch (id) {
-    case 1: return 'Start'
-    case 2: return 'End'
-    case 3: return 'Answer'
-    case 4: return 'Classifier'
-    case 5: return 'KeywordExtractor'
-    case 6: return 'KnowledgeRetrieval'
-    case 7: return 'DocumentExtractor'
-    case 8: return 'FaqExtractor'
-    case 9: return 'Switcher'
-    case 10: return 'Template'
-    case 11: return 'Dalle3'
-    case 12: return 'TongyiWanx'
-    case 13: return 'Google'
-    case 14: return 'HumanFeedback'
-    case 15: return 'MailSend'
-    case 16: return 'HttpRequest'
-    default: return 'Start'
-  }
+  return getNameById(workflowComponentId)
 }
 
 function getRealFileUrl(fileUrl: string) {
@@ -87,12 +72,28 @@ function resolveRuntimeDetailComponent(node: any) {
   return runtimeDetailMap[name] || DefaultRuntimeDetail
 }
 
-// 详情抽屉
-const detailVisible = ref(false)
-const detailNode = ref<any>(null)
-function openDetail(node: any) {
-  detailNode.value = node
-  detailVisible.value = true
+// 统一的详情展开控制（由父级或节点点击驱动）
+const injectedDetailUuid = inject<any>('wfRuntimeDetailUuid')
+const expandedUuid = ref<string | null>(injectedDetailUuid?.value ?? null)
+
+watch(
+  () => injectedDetailUuid?.value,
+  (val) => {
+    expandedUuid.value = val ?? null
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  refreshComponentMap()
+})
+
+function toggleDetail(node: any) {
+  const next = expandedUuid.value === node?.uuid ? null : node?.uuid || null
+  expandedUuid.value = next
+  if (injectedDetailUuid && typeof injectedDetailUuid.value !== 'undefined') {
+    injectedDetailUuid.value = next
+  }
 }
 
 // 运行态辅助：开始/结束时间与状态
@@ -136,7 +137,7 @@ function getDurationMs(node: any) {
         <div class="flex items-center space-x-2">
           <span v-if="getStatus(node) === 'running'" class="text-xs text-blue-500">正在运行</span>
           <span v-else class="text-xs text-green-600">运行完成 · {{ (getDurationMs(node) / 1000).toFixed(1) }}s</span>
-          <a class="text-xs" @click.stop="openDetail(node)">查看详情</a>
+          <a class="text-xs" @click.stop="toggleDetail(node)">{{ expandedUuid === node.uuid ? '收起详情' : '查看详情' }}</a>
         </div>
       </div>
       <div class="flex flex-col space-y-2">
@@ -162,11 +163,13 @@ function getDurationMs(node: any) {
             <div class="whitespace-pre-wrap break-words">{{ content.value || '无内容' }}</div>
           </template>
         </div>
+        <transition name="collapse">
+          <div v-if="expandedUuid === node.uuid" class="mt-2 border-t pt-2">
+            <component :is="resolveRuntimeDetailComponent(node)" :node="node" />
+          </div>
+        </transition>
       </div>
     </div>
-    <Drawer :open="detailVisible" title="节点运行详情" placement="right" :width="520" @close="() => (detailVisible = false)">
-      <component :is="resolveRuntimeDetailComponent(detailNode)" :node="detailNode" />
-    </Drawer>
   </div>
 </template>
 

@@ -2,7 +2,7 @@
 import { Handle, Position } from '@vue-flow/core'
 import CommonNodeHeader from '../../components/CommonNodeHeader.vue'
 import RuntimeBadge from '../../components/RuntimeBadge.vue'
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 
 interface Props {
   data: any
@@ -55,6 +55,9 @@ const lines = computed(() => {
       return props.extra ? [props.extra] : []
   }
 })
+
+const runtimeDetailUuid = inject<any>('wfRuntimeDetailUuid')
+const resolveRuntimeDetail = inject<any>('wfResolveRuntimeDetail')
 </script>
 
 <template>
@@ -65,6 +68,11 @@ const lines = computed(() => {
     <div v-for="(line, idx) in lines" :key="idx" class="content_line text-left px-3">{{ line }}</div>
     <div v-if="!lines.length && extra" class="content_line text-left px-3">{{ extra }}</div>
     <RuntimeBadge :wf-node="data" />
+    <transition name="collapse">
+      <div v-if="runtimeDetailUuid?.value === data?.uuid && data?.__runtime" class="px-3 pb-2">
+        <component :is="resolveRuntimeDetail ? resolveRuntimeDetail(data.__runtime || data) : 'div'" :node="data.__runtime || data" />
+      </div>
+    </transition>
   </div>
   
 </template>
