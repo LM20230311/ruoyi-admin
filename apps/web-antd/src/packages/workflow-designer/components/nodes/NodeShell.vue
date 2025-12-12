@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import CommonNodeHeader from '../../components/CommonNodeHeader.vue'
-import RuntimeBadge from '../../components/RuntimeBadge.vue'
+import SvgIcon from '../../components/SvgIcon.vue'
 import { computed, inject, watch } from 'vue'
 
 interface Props {
@@ -68,6 +68,23 @@ function isExpanded() {
   return !!id && (id === selfUuid || id === selfRuntimeIdStr)
 }
 
+const runtime = computed(() => props.data?.__runtime || null)
+const isRunning = computed(() => !!runtime.value && !runtime.value.endAt)
+const statusText = computed(() => {
+  if (!runtime.value) return ''
+  if (isRunning.value) return '正在运行'
+  const ms = Math.max(0, (runtime.value.endAt as number) - (runtime.value.startAt as number))
+  return `运行成功 · ${(ms / 1000).toFixed(3)}s`
+})
+const arrowIcon = computed(() => (isExpanded() ? 'ri:arrow-up-s-line' : 'ri:arrow-down-s-line'))
+
+function toggleDetailExternal() {
+  const id = runtime.value?.nodeUuid || runtime.value?.uuid || props.data?.uuid
+  if (id && runtimeDetailUuid) {
+    runtimeDetailUuid.value = runtimeDetailUuid.value === String(id) ? null : String(id)
+  }
+}
+
 // 展开/收起后，强制刷新节点尺寸，确保下拉区域可见
 watch(
   () => runtimeDetailUuid?.value,
@@ -89,16 +106,14 @@ watch(
       <CommonNodeHeader :wf-node="data" />
       <div v-for="(line, idx) in lines" :key="idx" class="content_line text-left px-3">{{ line }}</div>
       <div v-if="!lines.length && extra" class="content_line text-left px-3">{{ extra }}</div>
-      <RuntimeBadge :wf-node="data" />
+    </div>
+    <div v-if="runtime" class="runtime-bar" @click.stop.prevent="toggleDetailExternal">
+      <div class="status-text">{{ statusText }}</div>
+      <SvgIcon :icon="arrowIcon" class="arrow-icon" />
     </div>
     <transition name="collapse">
       <div v-if="isExpanded() && data?.__runtime" class="runtime-detail-popup">
         <component :is="resolveRuntimeDetail ? resolveRuntimeDetail(data.__runtime || data) : 'div'" :node="data.__runtime || data" />
-        <div class="text-[12px] text-gray-400 mt-2">
-          <div>runtimeDetailUuid: {{ runtimeDetailUuid?.value }}</div>
-          <div>nodeUuid: {{ data?.uuid }}</div>
-          <div>runtime.nodeUuid: {{ data?.__runtime?.nodeUuid || data?.__runtime?.uuid }}</div>
-        </div>
       </div>
     </transition>
   </div>
@@ -120,6 +135,29 @@ watch(
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
   padding: 12px;
   z-index: 5;
+}
+.runtime-bar {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ecfdf3;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  width: 100%;
+}
+.runtime-bar:hover {
+  background: #def7ec;
+}
+.status-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+.arrow-icon {
+  font-size: 18px;
 }
 </style>
 
