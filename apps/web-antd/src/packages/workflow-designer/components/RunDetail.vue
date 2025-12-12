@@ -8,7 +8,7 @@ import { workflowRun, workflowRuntimeResume, getUploadAction } from '#/api/workf
 import { createComponentNameMap } from '../utils/component-map'
 import { useWfStore } from '#/packages/workflow-designer/store'
 
-interface Props { workflow: any }
+interface Props { workflow: any; componentIdMap?: Record<string, string> }
 interface TabObj { name: string; tab: string; defaultTab: string }
 interface Emit { (e: 'runDone'): void; (e: 'runError', errorMsg: string): void }
 
@@ -35,8 +35,8 @@ const uploadedFileUuids = ref<string[]>([])
 const humanFeedback = ref<boolean>(false)
 const humanFeedbackTip = ref<string>('')
 const humanFeedbackContent = ref<string>('')
-// 组件ID到组件名称的映射（与 RuntimeNodes 统一）
-const { componentIdToNameMap, getNameById, refresh: refreshComponentMap } = createComponentNameMap()
+// 组件ID到组件名称的映射（与 RuntimeNodes 统一，使用外部传入）
+const { componentIdToNameMap, getNameById, setMap } = createComponentNameMap()
 let controller = new AbortController()
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -273,7 +273,7 @@ function rebuildUserInputs() {
 
 // 初始化：获取组件列表并重建用户输入
 async function init() {
-  await refreshComponentMap()
+  setMap(props.componentIdMap || {})
   rebuildUserInputs()
 }
 
@@ -281,6 +281,7 @@ init()
 
 watch(() => props.workflow, () => rebuildUserInputs(), { deep: true })
 watch(() => componentIdToNameMap.value, () => rebuildUserInputs(), { deep: true })
+watch(() => props.componentIdMap, (map) => setMap(map || {}), { deep: true })
 
 headers.Authorization = token.value
 onUnmounted(() => { if (wfStore.wfUuidToWfRuntimeLoading.get(currWfUuid)) controller.abort() })
@@ -293,7 +294,13 @@ onUnmounted(() => { if (wfStore.wfUuidToWfRuntimeLoading.get(currWfUuid)) contro
     </Tabs>
     <transition name="collapse">
       <div v-show="showCurrentExecution" class="max-h-[500px] overflow-y-auto mb-2">
-        <RuntimeNodes :nodes="runtimeNodes" :workflow="workflow" :error-msg="runtimeErrorMsg" :token="token" />
+        <RuntimeNodes
+          :nodes="runtimeNodes"
+          :workflow="workflow"
+          :error-msg="runtimeErrorMsg"
+          :token="token"
+          :component-id-map="componentIdToNameMap"
+        />
         <div class="sticky bottom-0 left-0 flex justify-center">
           <Button v-show="submitting" size="small" @click="handleStop">
             <template #icon><SvgIcon icon="ri:stop-circle-line" /></template>

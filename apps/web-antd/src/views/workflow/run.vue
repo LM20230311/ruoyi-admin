@@ -19,6 +19,25 @@ const workflow = ref<WorkflowInfo>({
 });
 
 const loading = ref(true);
+const componentIdMap = ref<Record<string, string>>({});
+
+// 获取组件列表映射，由外部传入设计器组件
+async function loadComponentMap() {
+  try {
+    const res = await workflowApi.workflowComponents();
+    const list = Array.isArray(res) ? res : (res?.data || []);
+    const map: Record<string, string> = {};
+    if (Array.isArray(list)) {
+      list.forEach((c: any) => {
+        map[String(c.id)] = c.name;
+      });
+    }
+    componentIdMap.value = map;
+  } catch (error: any) {
+    console.warn('加载组件列表失败', error?.message);
+    componentIdMap.value = {};
+  }
+}
 
 // 加载工作流数据
 async function loadWorkflow() {
@@ -42,6 +61,7 @@ async function loadWorkflow() {
 }
 
 onMounted(async () => {
+  await loadComponentMap();
   await loadWorkflow();
 });
 </script>
@@ -56,7 +76,7 @@ onMounted(async () => {
       <Spin size="large" tip="加载中..." />
     </div>
     <div v-else-if="workflow.uuid" class="p-6 bg-white rounded-lg">
-      <RunDetail :workflow="workflow" />
+      <RunDetail :workflow="workflow" :component-id-map="componentIdMap" />
     </div>
     <div v-else class="flex items-center justify-center h-full">
       <Empty description="工作流加载失败" />

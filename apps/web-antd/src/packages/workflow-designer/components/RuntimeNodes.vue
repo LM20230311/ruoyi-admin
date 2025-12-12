@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, inject, watch, onMounted } from 'vue'
+import { computed, ref, inject, watch } from 'vue'
 import { Image } from 'ant-design-vue'
 import SvgIcon from './SvgIcon.vue'
 import { getIconByComponentName, getIconClassByComponentName } from '../utils/workflow-util'
@@ -10,6 +10,7 @@ interface Props {
   workflow: any
   errorMsg: string
   token?: string
+  componentIdMap?: Record<string, string>
 }
 const props = defineProps<Props>()
 
@@ -18,8 +19,8 @@ const prologue = computed(() => {
   return (startNode?.nodeConfig || {}).prologue || ''
 })
 
-// 组件ID -> 名称映射（复用公共逻辑，支持移植）
-const { getNameById, refresh: refreshComponentMap } = createComponentNameMap()
+// 组件ID -> 名称映射（复用公共逻辑，使用外部传入的 map）
+const { getNameById, setMap } = createComponentNameMap(props.componentIdMap || {})
 
 // 根据 workflowComponentId 获取组件名称（优先映射，退回固定表）
 function getComponentNameByWorkflowComponentId(workflowComponentId: number | string): string {
@@ -84,9 +85,13 @@ watch(
   { immediate: true },
 )
 
-onMounted(() => {
-  refreshComponentMap()
-})
+watch(
+  () => props.componentIdMap,
+  (map) => {
+    if (map) setMap(map)
+  },
+  { deep: true, immediate: true },
+)
 
 function toggleDetail(node: any) {
   const next = expandedUuid.value === node?.uuid ? null : node?.uuid || null
