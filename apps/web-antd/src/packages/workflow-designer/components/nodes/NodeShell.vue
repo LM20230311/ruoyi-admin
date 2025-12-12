@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Handle, Position } from '@vue-flow/core'
+import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import CommonNodeHeader from '../../components/CommonNodeHeader.vue'
 import RuntimeBadge from '../../components/RuntimeBadge.vue'
-import { computed, inject } from 'vue'
+import { computed, inject, watch } from 'vue'
 
 interface Props {
   data: any
@@ -58,23 +58,69 @@ const lines = computed(() => {
 
 const runtimeDetailUuid = inject<any>('wfRuntimeDetailUuid')
 const resolveRuntimeDetail = inject<any>('wfResolveRuntimeDetail')
+const { updateNodeInternals } = useVueFlow()
+
+function isExpanded() {
+  const id = runtimeDetailUuid?.value ? String(runtimeDetailUuid.value) : ''
+  const selfUuid = props.data?.uuid ? String(props.data.uuid) : ''
+  const selfRuntimeId = props.data?.__runtime?.nodeUuid || props.data?.__runtime?.uuid
+  const selfRuntimeIdStr = selfRuntimeId ? String(selfRuntimeId) : ''
+  return !!id && (id === selfUuid || id === selfRuntimeIdStr)
+}
+
+// 展开/收起后，强制刷新节点尺寸，确保下拉区域可见
+watch(
+  () => runtimeDetailUuid?.value,
+  () => {
+    const id = props.data?.uuid || props.data?.__runtime?.nodeUuid || props.data?.__runtime?.uuid
+    if (id) {
+      try { updateNodeInternals([String(id)]) } catch {}
+    }
+  },
+  { flush: 'post' },
+)
 </script>
 
 <template>
-  <div class="flex flex-col w-full">
-    <Handle v-if="hasTarget" type="target" :position="Position.Left" />
-    <Handle v-if="hasSource" type="source" :position="Position.Right" />
-    <CommonNodeHeader :wf-node="data" />
-    <div v-for="(line, idx) in lines" :key="idx" class="content_line text-left px-3">{{ line }}</div>
-    <div v-if="!lines.length && extra" class="content_line text-left px-3">{{ extra }}</div>
-    <RuntimeBadge :wf-node="data" />
+  <div class="node-shell-root">
+    <div class="flex flex-col w-full node-card">
+      <Handle v-if="hasTarget" type="target" :position="Position.Left" />
+      <Handle v-if="hasSource" type="source" :position="Position.Right" />
+      <CommonNodeHeader :wf-node="data" />
+      <div v-for="(line, idx) in lines" :key="idx" class="content_line text-left px-3">{{ line }}</div>
+      <div v-if="!lines.length && extra" class="content_line text-left px-3">{{ extra }}</div>
+      <RuntimeBadge :wf-node="data" />
+    </div>
     <transition name="collapse">
-      <div v-if="runtimeDetailUuid?.value === data?.uuid && data?.__runtime" class="px-3 pb-2">
+      <div v-if="isExpanded() && data?.__runtime" class="runtime-detail-popup">
         <component :is="resolveRuntimeDetail ? resolveRuntimeDetail(data.__runtime || data) : 'div'" :node="data.__runtime || data" />
+        <div class="text-[12px] text-gray-400 mt-2">
+          <div>runtimeDetailUuid: {{ runtimeDetailUuid?.value }}</div>
+          <div>nodeUuid: {{ data?.uuid }}</div>
+          <div>runtime.nodeUuid: {{ data?.__runtime?.nodeUuid || data?.__runtime?.uuid }}</div>
+        </div>
       </div>
     </transition>
   </div>
   
 </template>
+
+<style scoped>
+.node-shell-root {
+  position: relative;
+}
+.runtime-detail-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+  z-index: 5;
+}
+</style>
 
 

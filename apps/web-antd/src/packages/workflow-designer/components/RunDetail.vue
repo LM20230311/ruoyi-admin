@@ -29,7 +29,6 @@ const currWfUuid = props.workflow.uuid
 const showCurrentExecution = ref<boolean>(false)
 const tabObj = ref<TabObj>({ name: 'runtimes', defaultTab: '流程执行详情', tab: '流程执行详情 ↓' })
 const fileListLength = ref(0)
-const uploadRef = ref<any>(null)
 const fileList = ref<UploadFile[]>([])
 const uploadedFileUuids = ref<string[]>([])
 const humanFeedback = ref<boolean>(false)
@@ -104,6 +103,7 @@ async function run() {
           if (eventName.includes('[NODE_RUN_')) {
             const nodeUuid = eventName.replace('[NODE_RUN_', '').replace(']', '')
             const runtimeNode = JSON.parse(chunk)
+            ;(runtimeNode as any).nodeUuid = nodeUuid
             nodeUuidToRuntimeNodeUuid.set(nodeUuid, runtimeNode.uuid)
             // 补充节点元信息（标题、组件），用于 UI 展示
             const wfNodeMeta = (props.workflow?.nodes || []).find((n: any) => n.uuid === nodeUuid)

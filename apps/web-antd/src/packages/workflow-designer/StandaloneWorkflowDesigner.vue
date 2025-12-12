@@ -271,12 +271,22 @@ function onRun() { emit('run', { workflow: props.workflow }) }
 const showCurrentExecution = ref<boolean>(false)
 const runtimeNodes = reactive<any[]>([])
 const runtimeDetailUuid = ref<string | null>(null)
+function runtimeNodeId(node: any) {
+  console.log(node,'node4')
+  const id = node?.nodeUuid || node?.uuid || node?.__runtime?.nodeUuid || node?.__runtime?.uuid || ''
+  return id ? String(id) : ''
+}
 // 运行详情改为节点内折叠展示：点击切换展开，保持只展开一个
 function toggleRuntimeDetail(node: any) {
-  const uuid = node?.uuid
-  runtimeDetailUuid.value = runtimeDetailUuid.value === uuid ? null : uuid
+  console.log(node,'node3')
+  const id = runtimeNodeId(node)
+  if (!id) return
+  const wfNode = (props.workflow.nodes as any[]).find((n) => n.uuid === id)
+  console.log('[WF] toggle detail', id, node, 'wfNode.__runtime =', wfNode?.__runtime)
+  runtimeDetailUuid.value = runtimeDetailUuid.value === id ? null : String(id)
+  console.log(runtimeDetailUuid.value,'runtimeDetailUuid.value')
 }
-provide('wfOpenRuntimeDetail', (node: any) => toggleRuntimeDetail(node))
+provide('wfOpenRuntimeDetail', (node: any) => toggleRuntimeDetail(node?.__runtime || node))
 provide('wfRuntimeDetailUuid', runtimeDetailUuid)
 // 运行详情组件注册：properties/<Name>NodeRuntime.vue，并下发解析函数，供节点内展示
 const runtimeDetailModules = import.meta.glob('./properties/*NodeRuntime.vue', { eager: true, import: 'default' }) as Record<string, any>
@@ -348,14 +358,15 @@ async function runInsideDesigner() {
         const evt = event || ''
         try {
           if (evt.includes('[NODE_RUN_')) {
-            const nodeUuid = evt.replace('[NODE_RUN_', '').replace(']', '')
+            const eventId = evt.replace('[NODE_RUN_', '').replace(']', '')
             const runtimeNode = JSON.parse(chunk)
-            ;(runtimeNode as any).nodeUuid = nodeUuid
-            nodeUuidToRuntimeNodeUuid.set(nodeUuid, runtimeNode.uuid)
+            const designUuid = runtimeNode.nodeUuid || runtimeNode.node_uuid || runtimeNode.node_id || eventId
+            ;(runtimeNode as any).nodeUuid = designUuid
+            nodeUuidToRuntimeNodeUuid.set(designUuid, runtimeNode.uuid)
             // 附加到 workflow 节点上，供节点组件读取
-            const wfNode = props.workflow.nodes.find((n: any) => n.uuid === nodeUuid) as any
+            const wfNode = props.workflow.nodes.find((n: any) => n.uuid === designUuid) as any
             if (wfNode) {
-              wfNode.__runtime = { ...runtimeNode, startAt: Date.now(), input: {}, output: {} }
+              wfNode.__runtime = { ...runtimeNode, nodeUuid: designUuid, startAt: Date.now(), input: {}, output: {} }
               markIncomingEdgesRunning(wfNode.uuid)
             }
             // 标记上一个已运行节点的结束时间，避免状态一直“运行中”

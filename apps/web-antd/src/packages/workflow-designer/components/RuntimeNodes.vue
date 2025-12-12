@@ -19,6 +19,12 @@ const prologue = computed(() => {
   return (startNode?.nodeConfig || {}).prologue || ''
 })
 
+// 统一获取节点唯一标识（兼容 runtimeNode.uuid / nodeUuid，兜底索引）
+function getNodeUuid(node: any, idx?: number): string {
+  console.log(node,'node1')
+  return node?.nodeUuid || node?.uuid || (typeof idx === 'number' ? String(idx) : '')
+}
+
 // 组件ID -> 名称映射（复用公共逻辑，使用外部传入的 map）
 const { getNameById, setMap } = createComponentNameMap(props.componentIdMap || {})
 
@@ -93,8 +99,11 @@ watch(
   { deep: true, immediate: true },
 )
 
-function toggleDetail(node: any) {
-  const next = expandedUuid.value === node?.uuid ? null : node?.uuid || null
+function toggleDetail(node: any, idx?: number) {
+  const nodeId = getNodeUuid(node, idx) || (typeof idx === 'number' ? String(idx) : '')
+  if (!nodeId) return
+  console.log('[RuntimeNodes] toggle detail', { nodeId, idx, node })
+  const next = expandedUuid.value === nodeId ? null : nodeId || null
   expandedUuid.value = next
   if (injectedDetailUuid && typeof injectedDetailUuid.value !== 'undefined') {
     injectedDetailUuid.value = next
@@ -103,6 +112,7 @@ function toggleDetail(node: any) {
 
 // 运行态辅助：开始/结束时间与状态
 function getStatus(node: any) {
+  console.log(node,'node2')
   if (node?.endAt) return 'done'
   return 'running'
 }
@@ -119,11 +129,11 @@ function getDurationMs(node: any) {
     <div v-else-if="nodes.length === 0" class="text-center py-2 text-neutral-400">无内容</div>
     <div v-show="prologue" class="p-2">{{ prologue }}</div>
     <div
-      v-for="node in nodes"
-      :key="node.uuid"
+      v-for="(node, idx) in nodes"
+      :key="getNodeUuid(node, idx)"
       class="flex flex-col space-y-2 border border-gray-200 p-2 m-2 rounded-md"
       :title="node.nodeTitle"
-      :name="node.uuid"
+      :name="getNodeUuid(node, idx)"
     >
       <!-- 调试信息 -->
       <!-- <div class="text-xs text-gray-500">
@@ -142,7 +152,7 @@ function getDurationMs(node: any) {
         <div class="flex items-center space-x-2">
           <span v-if="getStatus(node) === 'running'" class="text-xs text-blue-500">正在运行</span>
           <span v-else class="text-xs text-green-600">运行完成 · {{ (getDurationMs(node) / 1000).toFixed(1) }}s</span>
-          <a class="text-xs" @click.stop="toggleDetail(node)">{{ expandedUuid === node.uuid ? '收起详情' : '查看详情' }}</a>
+          <a class="text-xs cursor-pointer" @click.stop.prevent="toggleDetail(node, idx)">{{ expandedUuid === getNodeUuid(node, idx) ? '收起详情' : '查看详情' }}</a>
         </div>
       </div>
       <div class="flex flex-col space-y-2">
@@ -169,7 +179,7 @@ function getDurationMs(node: any) {
           </template>
         </div>
         <transition name="collapse">
-          <div v-if="expandedUuid === node.uuid" class="mt-2 border-t pt-2">
+          <div v-if="expandedUuid === getNodeUuid(node, idx)" class="mt-2 border-t pt-2">
             <component :is="resolveRuntimeDetailComponent(node)" :node="node" />
           </div>
         </transition>
