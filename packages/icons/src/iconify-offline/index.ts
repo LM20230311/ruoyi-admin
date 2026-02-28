@@ -12,7 +12,7 @@ import alipayIcon from '@iconify/icons-fa-brands/alipay';
 import androidIcon from '@iconify/icons-flat-color-icons/android-os';
 import comandLine from '@iconify/icons-flat-color-icons/command-line';
 import folderIcon from '@iconify/icons-flat-color-icons/folder';
-import defaultOsIcon from '@iconify/icons-ic/outline-computer';
+import defaultOsIcon from '@iconify/icons-ic/round-computer';
 import memoryIcon from '@iconify/icons-la/memory';
 import chromeIcon from '@iconify/icons-logos/chrome';
 import firefoxIcon from '@iconify/icons-logos/firefox';
@@ -112,7 +112,7 @@ export const IPhoneIcon = createIconifyOfflineIcon(
 );
 // 上面图标没找到 默认图标
 export const DefaultOsIcon = createIconifyOfflineIcon(
-  'ic:outline-computer',
+  'ic:round-computer',
   defaultOsIcon,
 );
 
