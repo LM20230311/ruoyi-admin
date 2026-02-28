@@ -300,18 +300,22 @@ const runtimeDetailMap = Object.fromEntries(Object.entries(runtimeDetailModules)
 const DefaultRuntimeDetail = {
   props: ['node'],
   template: `
-    <div class="space-y-3">
-      <div class="text-base font-semibold">输入</div>
+    <div class="space-y-4 text-[13px]">
+      <div class="font-semibold">输入</div>
       <div v-if="!node?.input || Object.keys(node.input).length===0" class="text-neutral-400">无输入</div>
-      <div v-else v-for="(content, name) in node.input" :key="'input_'+name" class="flex">
-        <div class="min-w-24 pr-2">{{ name }}</div>
-        <div class="whitespace-pre-wrap break-words">{{ content?.value ?? '' }}</div>
+      <div v-else class="space-y-2">
+        <div v-for="(content, name) in node.input" :key="'input_'+name" class="flex">
+          <div class="min-w-20 text-neutral-500">{{ name }}</div>
+          <div class="whitespace-pre-wrap break-words flex-1">{{ content?.value ?? '' }}</div>
+        </div>
       </div>
-      <div class="text-base font-semibold mt-2">输出</div>
+      <div class="font-semibold mt-2">输出</div>
       <div v-if="!node?.output || Object.keys(node.output).length===0" class="text-neutral-400">无输出</div>
-      <div v-else v-for="(content, name) in node.output" :key="'output_'+name" class="flex">
-        <div class="min-w-24 pr-2">{{ name }}</div>
-        <div class="whitespace-pre-wrap break-words">{{ content?.value ?? '' }}</div>
+      <div v-else class="space-y-2">
+        <div v-for="(content, name) in node.output" :key="'output_'+name" class="flex">
+          <div class="min-w-20 text-neutral-500">{{ name }}</div>
+          <div class="whitespace-pre-wrap break-words flex-1">{{ content?.value ?? '' }}</div>
+        </div>
       </div>
     </div>
   `,

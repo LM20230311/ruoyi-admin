@@ -41,9 +41,9 @@
 - 运行视图与运行记录列表都可复用该映射。
 
 ## 5. 定制详情组件
-- 约定放在 `properties/<Name>NodeRuntime.vue`，文件名中的 `<Name>` 为组件名（小写匹配）。
-- 设计器会自动扫描并通过 `wfResolveRuntimeDetail` 下发。
-- 例：为组件 `Answer` 增加详情，创建 `properties/answerNodeRuntime.vue`：
+- 默认实现：如果没有对应组件的自定义文件，会回退到默认详情，展示节点的输入/输出（类似开始节点的展示样式，输入输出按行罗列）。
+- 自定义约定：在 `properties/<Name>NodeRuntime.vue`，文件名 `<Name>` 为组件名（小写匹配）。设计器自动扫描并通过 `wfResolveRuntimeDetail` 下发。
+- 示例：为组件 `Answer` 增加详情，创建 `properties/answerNodeRuntime.vue`：
   ```vue
   <script setup>
   defineProps({ node: Object })
