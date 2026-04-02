@@ -43,7 +43,7 @@ vite.config.ts.*
 
 # Editor directories and files
 .idea
-# .vscode
+.vscode
 *.suo
 *.ntvs*
 *.njsproj
@@ -52,3 +52,5 @@ vite.config.ts.*
 # 排除自动生成的类型文件
 apps/web-antd/types/components.d.ts
 .history
+.cursor
+.claude
